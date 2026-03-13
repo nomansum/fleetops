@@ -1,0 +1,151 @@
+syntax = "proto3";
+
+package driver.v1;
+
+option go_package = "github.com/fleetops/gen/driver/v1;driverv1";
+
+// ── Enums ─────────────────────────────────────────────────────────────────────
+enum DriverStatus {
+  DRIVER_STATUS_UNSPECIFIED = 0;
+  DRIVER_STATUS_AVAILABLE   = 1;
+  DRIVER_STATUS_ON_DELIVERY = 2;
+  DRIVER_STATUS_OFFLINE     = 3;
+  DRIVER_STATUS_SUSPENDED   = 4;
+}
+
+enum VehicleType {
+  VEHICLE_TYPE_UNSPECIFIED = 0;
+  VEHICLE_TYPE_MOTORCYCLE  = 1;
+  VEHICLE_TYPE_CAR         = 2;
+  VEHICLE_TYPE_VAN         = 3;
+  VEHICLE_TYPE_TRUCK       = 4;
+}
+
+enum DocumentType {
+  DOCUMENT_TYPE_UNSPECIFIED = 0;
+  DOCUMENT_TYPE_LICENSE     = 1;
+  DOCUMENT_TYPE_INSURANCE   = 2;
+  DOCUMENT_TYPE_MOT         = 3;
+  DOCUMENT_TYPE_PERMIT      = 4;
+}
+
+enum VerificationStatus {
+  VERIFICATION_STATUS_UNSPECIFIED = 0;
+  VERIFICATION_STATUS_PENDING     = 1;
+  VERIFICATION_STATUS_VERIFIED    = 2;
+  VERIFICATION_STATUS_REJECTED    = 3;
+  VERIFICATION_STATUS_EXPIRED     = 4;
+}
+
+// ── Domain Objects ────────────────────────────────────────────────────────────
+message Vehicle {
+  string      id           = 1;
+  string      driver_id    = 2;
+  string      plate_number = 3;
+  VehicleType type         = 4;
+  double      capacity_kg  = 5;
+  string      make         = 6;
+  string      model        = 7;
+  int32       year         = 8;
+  bool        active       = 9;
+}
+
+message Document {
+  string             id                  = 1;
+  string             driver_id           = 2;
+  DocumentType       type                = 3;
+  string             reference_number    = 4;
+  string             expiry_date         = 5; // RFC3339 date
+  VerificationStatus verification_status = 6;
+  string             file_url            = 7;
+  string             uploaded_at         = 8;
+}
+
+message Driver {
+  string         id             = 1;
+  string         tenant_id      = 2;
+  string         user_id        = 3; // links to IAM user
+  string         name           = 4;
+  string         phone          = 5;
+  string         license_number = 6;
+  DriverStatus   status         = 7;
+  Vehicle        vehicle        = 8;
+  repeated Document documents   = 9;
+  string         created_at     = 10;
+  string         updated_at     = 11;
+}
+
+// ── Requests / Responses ──────────────────────────────────────────────────────
+message CreateDriverRequest {
+  string tenant_id      = 1;
+  string user_id        = 2;
+  string name           = 3;
+  string phone          = 4;
+  string license_number = 5;
+}
+
+message GetDriverRequest {
+  string driver_id = 1;
+}
+
+message UpdateDriverStatusRequest {
+  string       driver_id = 1;
+  DriverStatus status    = 2;
+}
+
+message SuspendDriverRequest {
+  string driver_id = 1;
+  string reason    = 2;
+}
+
+message ListAvailableDriversRequest {
+  string tenant_id = 1;
+  int32  page_size = 2;
+  string page_token = 3;
+}
+
+message ListAvailableDriversResponse {
+  repeated Driver drivers        = 1;
+  string          next_page_token = 2;
+}
+
+message AssignVehicleRequest {
+  string      driver_id    = 1;
+  string      plate_number = 2;
+  VehicleType type         = 3;
+  double      capacity_kg  = 4;
+  string      make         = 5;
+  string      model        = 6;
+  int32       year         = 7;
+}
+
+message AddDocumentRequest {
+  string       driver_id        = 1;
+  DocumentType type             = 2;
+  string       reference_number = 3;
+  string       expiry_date      = 4;
+  string       file_url         = 5;
+}
+
+message ListExpiringDocumentsRequest {
+  int32 within_days = 1; // documents expiring within N days
+  int32 page_size   = 2;
+  string page_token = 3;
+}
+
+message ListExpiringDocumentsResponse {
+  repeated Document documents      = 1;
+  string            next_page_token = 2;
+}
+
+// ── Service ───────────────────────────────────────────────────────────────────
+service DriverService {
+  rpc CreateDriver            (CreateDriverRequest)            returns (Driver);
+  rpc GetDriver               (GetDriverRequest)               returns (Driver);
+  rpc UpdateDriverStatus      (UpdateDriverStatusRequest)      returns (Driver);
+  rpc SuspendDriver           (SuspendDriverRequest)           returns (Driver);
+  rpc ListAvailableDrivers    (ListAvailableDriversRequest)    returns (ListAvailableDriversResponse);
+  rpc AssignVehicle           (AssignVehicleRequest)           returns (Vehicle);
+  rpc AddDocument             (AddDocumentRequest)             returns (Document);
+  rpc ListExpiringDocuments   (ListExpiringDocumentsRequest)   returns (ListExpiringDocumentsResponse);
+}
