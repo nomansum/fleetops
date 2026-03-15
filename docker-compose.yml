@@ -20,7 +20,7 @@ networks:
     driver: bridge
     ipam:
       config:
-        - subnet: 172.20.0.0/24
+        - subnet: 172.28.0.0/24
 
 volumes:
   pg_iam_data:
@@ -207,14 +207,14 @@ services:
       agent -dev -ui
       -client=0.0.0.0
       -bind=0.0.0.0
-      -advertise=172.20.0.100
+      -advertise=172.28.0.100
       -node=fleetops-dev
     ports:
       - "8500:8500"   # HTTP UI + API
       - "8600:8600/udp"  # DNS
     volumes:
       - consul_data:/consul/data
-      - ./deployments/consul:/consul/config:ro
+      - ./deployments/consul:/consul/config
     healthcheck:
       test: ["CMD", "consul", "members"]
       interval: 10s
@@ -222,7 +222,7 @@ services:
       retries: 5
     networks:
       fleetops_net:
-        ipv4_address: 172.20.0.100
+        ipv4_address: 172.28.0.100
     logging: *default-logging
 
   # ───────────────────────────────────────────────────────────────────────────
@@ -239,6 +239,7 @@ services:
       DATABASE_URL: postgres://fleetops:fleetops_secret@postgres-iam:5432/iam_db?sslmode=disable
       GRPC_PORT: "9001"
       CONSUL_HTTP_ADDR: consul:8500
+      SERVICE_HOST: iam-service
       JWT_PRIVATE_KEY_PATH: /run/secrets/jwt_private_key
       JWT_PUBLIC_KEY_PATH: /run/secrets/jwt_public_key
       LOG_LEVEL: info
@@ -266,6 +267,7 @@ services:
       NATS_URL: nats://nats:4222
       GRPC_PORT: "9002"
       CONSUL_HTTP_ADDR: consul:8500
+      SERVICE_HOST: driver-service
       LOG_LEVEL: info
     ports:
       - "9002:9002"
@@ -288,6 +290,7 @@ services:
       NATS_URL: nats://nats:4222
       GRPC_PORT: "9003"
       CONSUL_HTTP_ADDR: consul:8500
+      SERVICE_HOST: dispatch-service
       LOG_LEVEL: info
     ports:
       - "9003:9003"
@@ -310,6 +313,7 @@ services:
       NATS_URL: nats://nats:4222
       GRPC_PORT: "9004"
       CONSUL_HTTP_ADDR: consul:8500
+      SERVICE_HOST: tracking-service
       LOG_LEVEL: info
     ports:
       - "9004:9004"
@@ -332,6 +336,7 @@ services:
       NATS_URL: nats://nats:4222
       GRPC_PORT: "9005"
       CONSUL_HTTP_ADDR: consul:8500
+      SERVICE_HOST: billing-service
       LOG_LEVEL: info
     ports:
       - "9005:9005"
@@ -354,6 +359,7 @@ services:
       REDIS_ADDR: redis-notify:6379
       GRPC_PORT: "9006"
       CONSUL_HTTP_ADDR: consul:8500
+      SERVICE_HOST: notification-service
       LOG_LEVEL: info
     ports:
       - "9006:9006"

@@ -6,9 +6,11 @@ import (
 	"net"
 	"os"
 	"os/signal"
+	"strconv"
 	"syscall"
 
 	iamv1 "github.com/fleetops/gen/iam/v1"
+	consulpkg "github.com/fleetops/pkg/consul"
 	"github.com/fleetops/iam-service/internal/application/commands"
 	iamgrpc "github.com/fleetops/iam-service/internal/interfaces/grpc"
 	iamjwt "github.com/fleetops/iam-service/internal/infrastructure/jwt"
@@ -79,6 +81,15 @@ func main() {
 			log.Fatal().Err(err).Msg("serve")
 		}
 	}()
+
+	// ── Consul registration ───────────────────────────────────────────────────
+	portInt, _ := strconv.Atoi(port)
+	deregister, err := consulpkg.Register("iam-service", "iam-service", envOr("SERVICE_HOST", "localhost"), portInt)
+	if err != nil {
+		log.Warn().Err(err).Msg("consul registration failed")
+	} else {
+		defer deregister()
+	}
 
 	// ── Graceful shutdown ─────────────────────────────────────────────────────
 	quit := make(chan os.Signal, 1)

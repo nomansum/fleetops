@@ -9,8 +9,10 @@ import (
 
 // Register registers a service with Consul and returns a deregister func.
 //
-// CONSUL_HTTP_ADDR env var controls the agent address (default: localhost:8500).
-func Register(serviceName, serviceID string, port int) (func() error, error) {
+// host is the address Consul uses to reach the service (e.g. the Docker service
+// name). CONSUL_HTTP_ADDR env var controls the agent address (default: localhost:8500).
+
+func Register(serviceName, serviceID, host string, port int) (func() error, error) {
 	cfg := consulapi.DefaultConfig()
 	if addr := os.Getenv("CONSUL_HTTP_ADDR"); addr != "" {
 		cfg.Address = addr
@@ -24,10 +26,11 @@ func Register(serviceName, serviceID string, port int) (func() error, error) {
 	reg := &consulapi.AgentServiceRegistration{
 		ID:      serviceID,
 		Name:    serviceName,
+		Address: host,
 		Port:    port,
 		Tags:    []string{"fleetops", "grpc"},
 		Check: &consulapi.AgentServiceCheck{
-			GRPC:                           fmt.Sprintf("localhost:%d/%s", port, serviceName),
+			GRPC:                           fmt.Sprintf("%s:%d/%s", host, port, serviceName),
 			Interval:                       "10s",
 			Timeout:                        "5s",
 			DeregisterCriticalServiceAfter: "30s",

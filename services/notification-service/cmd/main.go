@@ -8,11 +8,13 @@ import (
 	"net"
 	"os"
 	"os/signal"
+	"strconv"
 	"syscall"
 	"text/template"
 	"time"
 
 	notificationv1 "github.com/fleetops/gen/notification/v1"
+	consulpkg "github.com/fleetops/pkg/consul"
 	"github.com/google/uuid"
 	natspkg "github.com/nats-io/nats.go"
 	"github.com/nats-io/nats.go/jetstream"
@@ -67,6 +69,15 @@ func main() {
 			log.Fatal().Err(err).Msg("serve")
 		}
 	}()
+
+	// ── Consul registration ───────────────────────────────────────────────────
+	portInt, _ := strconv.Atoi(port)
+	deregister, err := consulpkg.Register("notification-service", "notification-service", envOr("SERVICE_HOST", "localhost"), portInt)
+	if err != nil {
+		log.Warn().Err(err).Msg("consul registration failed")
+	} else {
+		defer deregister()
+	}
 
 	quit := make(chan os.Signal, 1)
 	signal.Notify(quit, syscall.SIGINT, syscall.SIGTERM)

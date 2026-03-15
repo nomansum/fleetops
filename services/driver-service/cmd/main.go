@@ -6,9 +6,11 @@ import (
 	"net"
 	"os"
 	"os/signal"
+	"strconv"
 	"syscall"
 
 	driverv1 "github.com/fleetops/gen/driver/v1"
+	consulpkg "github.com/fleetops/pkg/consul"
 	drivergrpc "github.com/fleetops/driver-service/internal/interfaces/grpc"
 	natsinfra "github.com/fleetops/driver-service/internal/infrastructure/nats"
 	pginfra "github.com/fleetops/driver-service/internal/infrastructure/postgres"
@@ -81,6 +83,15 @@ func main() {
 			log.Fatal().Err(err).Msg("serve")
 		}
 	}()
+
+	// ── Consul registration ───────────────────────────────────────────────────
+	portInt, _ := strconv.Atoi(port)
+	deregister, err := consulpkg.Register("driver-service", "driver-service", envOr("SERVICE_HOST", "localhost"), portInt)
+	if err != nil {
+		log.Warn().Err(err).Msg("consul registration failed")
+	} else {
+		defer deregister()
+	}
 
 	quit := make(chan os.Signal, 1)
 	signal.Notify(quit, syscall.SIGINT, syscall.SIGTERM)

@@ -6,9 +6,11 @@ import (
 	"net"
 	"os"
 	"os/signal"
+	"strconv"
 	"syscall"
 
 	trackingv1 "github.com/fleetops/gen/tracking/v1"
+	consulpkg "github.com/fleetops/pkg/consul"
 	trackinggrpc "github.com/fleetops/tracking-service/internal/interfaces/grpc"
 	"github.com/jackc/pgx/v5/pgxpool"
 	natspkg "github.com/nats-io/nats.go"
@@ -62,6 +64,15 @@ func main() {
 			log.Fatal().Err(err).Msg("serve")
 		}
 	}()
+
+	// ── Consul registration ───────────────────────────────────────────────────
+	portInt, _ := strconv.Atoi(port)
+	deregister, err := consulpkg.Register("tracking-service", "tracking-service", envOr("SERVICE_HOST", "localhost"), portInt)
+	if err != nil {
+		log.Warn().Err(err).Msg("consul registration failed")
+	} else {
+		defer deregister()
+	}
 
 	quit := make(chan os.Signal, 1)
 	signal.Notify(quit, syscall.SIGINT, syscall.SIGTERM)
