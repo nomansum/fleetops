@@ -1,0 +1,125 @@
+syntax = "proto3";
+
+package billing.v1;
+
+option go_package = "github.com/fleetops/gen/billing/v1;billingv1";
+
+// ── Enums ─────────────────────────────────────────────────────────────────────
+enum InvoiceStatus {
+  INVOICE_STATUS_UNSPECIFIED = 0;
+  INVOICE_STATUS_DRAFT       = 1;
+  INVOICE_STATUS_ISSUED      = 2;
+  INVOICE_STATUS_PAID        = 3;
+  INVOICE_STATUS_OVERDUE     = 4;
+  INVOICE_STATUS_VOID        = 5;
+}
+
+// ── Domain Objects ────────────────────────────────────────────────────────────
+message Money {
+  int64  amount_cents  = 1; // e.g. 1050 = $10.50
+  string currency_code = 2; // ISO-4217 e.g. "USD"
+}
+
+message LineItem {
+  string id          = 1;
+  string description = 2;
+  int32  quantity    = 3;
+  Money  unit_price  = 4;
+  Money  total       = 5;
+}
+
+message Invoice {
+  string              id          = 1;
+  string              tenant_id   = 2;
+  string              order_id    = 3;
+  string              reference   = 4; // INV-2026-00042
+  InvoiceStatus       status      = 5;
+  repeated LineItem   line_items  = 6;
+  Money               subtotal    = 7;
+  Money               tax         = 8;
+  Money               total       = 9;
+  string              issued_at   = 10;
+  string              due_date    = 11;
+  string              paid_at     = 12;
+  string              created_at  = 13;
+}
+
+message PricingRule {
+  string id              = 1;
+  string tenant_id       = 2;
+  string name            = 3;
+  Money  base_charge     = 4;
+  double rate_per_km     = 5; // in currency minor units per km
+  double surcharge_pct   = 6; // percentage surcharge (express, same-day)
+  string active_from     = 7;
+  string active_until    = 8;
+}
+
+message PriceEstimate {
+  Money  base_charge = 1;
+  Money  distance_charge = 2;
+  Money  surcharge   = 3;
+  Money  total       = 4;
+  double distance_km = 5;
+}
+
+// ── Requests / Responses ──────────────────────────────────────────────────────
+message GetInvoiceRequest {
+  string invoice_id = 1;
+}
+
+message ListInvoicesRequest {
+  string        tenant_id  = 1;
+  InvoiceStatus status     = 2;
+  int32         page_size  = 3;
+  string        page_token = 4;
+}
+
+message ListInvoicesResponse {
+  repeated Invoice invoices        = 1;
+  string           next_page_token = 2;
+}
+
+message CreateInvoiceRequest {
+  string tenant_id = 1;
+  string order_id  = 2;
+}
+
+message IssueInvoiceRequest {
+  string invoice_id = 1;
+  string due_date   = 2; // RFC3339
+}
+
+message RecordPaymentRequest {
+  string invoice_id      = 1;
+  string payment_ref     = 2;
+  string paid_at         = 3;
+}
+
+message UpsertPricingRuleRequest {
+  string tenant_id      = 1;
+  string name           = 2;
+  Money  base_charge    = 3;
+  double rate_per_km    = 4;
+  double surcharge_pct  = 5;
+  string active_from    = 6;
+  string active_until   = 7;
+}
+
+message ComputeOrderPriceRequest {
+  string tenant_id   = 1;
+  string order_id    = 2;
+  double distance_km = 3;
+  string priority    = 4; // matches dispatch OrderPriority name
+}
+
+// ── Service ───────────────────────────────────────────────────────────────────
+service BillingService {
+  rpc GetInvoice          (GetInvoiceRequest)          returns (Invoice);
+  rpc ListInvoices        (ListInvoicesRequest)        returns (ListInvoicesResponse);
+  rpc CreateInvoice       (CreateInvoiceRequest)       returns (Invoice);
+  rpc IssueInvoice        (IssueInvoiceRequest)        returns (Invoice);
+  rpc RecordPayment       (RecordPaymentRequest)       returns (Invoice);
+  rpc UpsertPricingRule   (UpsertPricingRuleRequest)   returns (PricingRule);
+  rpc ComputeOrderPrice   (ComputeOrderPriceRequest)   returns (PriceEstimate);
+}

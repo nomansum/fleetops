@@ -1,0 +1,533 @@
+name: fleetops
+
+# ─────────────────────────────────────────────────────────────────────────────
+# Common configuration snippets
+# ─────────────────────────────────────────────────────────────────────────────
+x-logging: &default-logging
+  driver: json-file
+  options:
+    max-size: "10m"
+    max-file: "3"
+
+x-restart: &restart
+  restart: unless-stopped
+
+x-otel: &otel-env
+  OTEL_EXPORTER_OTLP_ENDPOINT: otel-collector:4317
+
+networks:
+  fleetops_net:
+    driver: bridge
+    ipam:
+      config:
+        - subnet: 172.28.0.0/24
+
+volumes:
+  pg_iam_data:
+  pg_driver_data:
+  pg_dispatch_data:
+  pg_billing_data:
+  timescale_data:
+  redis_shared_data:
+  redis_notify_data:
+  nats_data:
+  consul_data:
+  prometheus_data:
+  grafana_data:
+  loki_data:
+
+services:
+
+  # ───────────────────────────────────────────────────────────────────────────
+  # Infrastructure — Databases
+  # ───────────────────────────────────────────────────────────────────────────
+
+  postgres-iam:
+    image: postgres:16-alpine
+    <<: *restart
+    environment:
+      POSTGRES_DB: iam_db
+      POSTGRES_USER: fleetops
+      POSTGRES_PASSWORD: fleetops_secret
+    ports:
+      - "5432:5432"
+    volumes:
+      - pg_iam_data:/var/lib/postgresql/data
+      - ./services/iam-service/internal/infrastructure/postgres/migrations:/docker-entrypoint-initdb.d:ro
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U fleetops -d iam_db"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    networks: [fleetops_net]
+    logging: *default-logging
+
+  postgres-driver:
+    image: postgres:16-alpine
+    <<: *restart
+    environment:
+      POSTGRES_DB: driver_db
+      POSTGRES_USER: fleetops
+      POSTGRES_PASSWORD: fleetops_secret
+    ports:
+      - "5433:5432"
+    volumes:
+      - pg_driver_data:/var/lib/postgresql/data
+      - ./services/driver-service/internal/infrastructure/postgres/migrations:/docker-entrypoint-initdb.d:ro
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U fleetops -d driver_db"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    networks: [fleetops_net]
+    logging: *default-logging
+
+  postgres-dispatch:
+    image: postgis/postgis:16-3.4-alpine
+    <<: *restart
+    environment:
+      POSTGRES_DB: dispatch_db
+      POSTGRES_USER: fleetops
+      POSTGRES_PASSWORD: fleetops_secret
+    ports:
+      - "5434:5432"
+    volumes:
+      - pg_dispatch_data:/var/lib/postgresql/data
+      - ./services/dispatch-service/internal/infrastructure/postgres/migrations:/docker-entrypoint-initdb.d:ro
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U fleetops -d dispatch_db"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    networks: [fleetops_net]
+    logging: *default-logging
+
+  postgres-billing:
+    image: postgres:16-alpine
+    <<: *restart
+    environment:
+      POSTGRES_DB: billing_db
+      POSTGRES_USER: fleetops
+      POSTGRES_PASSWORD: fleetops_secret
+    ports:
+      - "5435:5432"
+    volumes:
+      - pg_billing_data:/var/lib/postgresql/data
+      - ./services/billing-service/internal/infrastructure/postgres/migrations:/docker-entrypoint-initdb.d:ro
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U fleetops -d billing_db"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    networks: [fleetops_net]
+    logging: *default-logging
+
+  timescaledb:
+    image: timescale/timescaledb:latest-pg16
+    <<: *restart
+    environment:
+      POSTGRES_DB: tracking_db
+      POSTGRES_USER: fleetops
+      POSTGRES_PASSWORD: fleetops_secret
+    ports:
+      - "5436:5432"
+    volumes:
+      - timescale_data:/var/lib/postgresql/data
+      - ./services/tracking-service/internal/infrastructure/postgres/migrations:/docker-entrypoint-initdb.d:ro
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U fleetops -d tracking_db"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    networks: [fleetops_net]
+    logging: *default-logging
+
+  # ───────────────────────────────────────────────────────────────────────────
+  # Infrastructure — Cache / Queue
+  # ───────────────────────────────────────────────────────────────────────────
+
+  redis-shared:
+    image: redis:7-alpine
+    <<: *restart
+    command: redis-server --save 60 1 --loglevel warning
+    ports:
+      - "6379:6379"
+    volumes:
+      - redis_shared_data:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 3s
+      retries: 5
+    networks: [fleetops_net]
+    logging: *default-logging
+
+  redis-notify:
+    image: redis:7-alpine
+    <<: *restart
+    command: redis-server --save 60 1 --loglevel warning
+    ports:
+      - "6380:6379"
+    volumes:
+      - redis_notify_data:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 3s
+      retries: 5
+    networks: [fleetops_net]
+    logging: *default-logging
+
+  nats:
+    image: nats:2.10-alpine
+    <<: *restart
+    command: -js -sd /data -m 8222
+    ports:
+      - "4222:4222"   # client
+      - "8222:8222"   # monitoring HTTP
+    volumes:
+      - nats_data:/data
+    healthcheck:
+      test: ["CMD-SHELL", "wget -qO- http://localhost:8222/healthz | grep -q ok"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    networks: [fleetops_net]
+    logging: *default-logging
+
+  # ───────────────────────────────────────────────────────────────────────────
+  # Service Mesh — Consul
+  # Service discovery + health checks + service intentions (mTLS in mesh mode)
+  # ───────────────────────────────────────────────────────────────────────────
+
+  consul:
+    image: hashicorp/consul:1.19
+    <<: *restart
+    command: >
+      agent -dev -ui
+      -client=0.0.0.0
+      -bind=0.0.0.0
+      -advertise=172.28.0.100
+      -node=fleetops-dev
+    ports:
+      - "8500:8500"   # HTTP UI + API
+      - "8600:8600/udp"  # DNS
+    volumes:
+      - consul_data:/consul/data
+      - ./deployments/consul:/consul/config
+    healthcheck:
+      test: ["CMD", "consul", "members"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    networks:
+      fleetops_net:
+        ipv4_address: 172.28.0.100
+    logging: *default-logging
+
+  # ───────────────────────────────────────────────────────────────────────────
+  # Application Services
+  # ───────────────────────────────────────────────────────────────────────────
+
+  iam-service:
+    build:
+      context: .
+      dockerfile: services/iam-service/Dockerfile
+    <<: *restart
+    environment:
+      <<: *otel-env
+      DATABASE_URL: postgres://fleetops:fleetops_secret@postgres-iam:5432/iam_db?sslmode=disable
+      GRPC_PORT: "9001"
+      CONSUL_HTTP_ADDR: consul:8500
+      SERVICE_HOST: iam-service
+      JWT_PRIVATE_KEY_PATH: /run/secrets/jwt_private_key
+      JWT_PUBLIC_KEY_PATH: /run/secrets/jwt_public_key
+      LOG_LEVEL: info
+    ports:
+      - "9001:9001"
+    secrets:
+      - jwt_private_key
+      - jwt_public_key
+    depends_on:
+      postgres-iam:
+        condition: service_healthy
+      consul:
+        condition: service_healthy
+    networks: [fleetops_net]
+    logging: *default-logging
+
+  driver-service:
+    build:
+      context: .
+      dockerfile: services/driver-service/Dockerfile
+    <<: *restart
+    environment:
+      <<: *otel-env
+      DATABASE_URL: postgres://fleetops:fleetops_secret@postgres-driver:5432/driver_db?sslmode=disable
+      NATS_URL: nats://nats:4222
+      GRPC_PORT: "9002"
+      CONSUL_HTTP_ADDR: consul:8500
+      SERVICE_HOST: driver-service
+      LOG_LEVEL: info
+    ports:
+      - "9002:9002"
+    depends_on:
+      postgres-driver:
+        condition: service_healthy
+      nats:
+        condition: service_healthy
+    networks: [fleetops_net]
+    logging: *default-logging
+
+  dispatch-service:
+    build:
+      context: .
+      dockerfile: services/dispatch-service/Dockerfile
+    <<: *restart
+    environment:
+      <<: *otel-env
+      DATABASE_URL: postgres://fleetops:fleetops_secret@postgres-dispatch:5432/dispatch_db?sslmode=disable
+      NATS_URL: nats://nats:4222
+      GRPC_PORT: "9003"
+      CONSUL_HTTP_ADDR: consul:8500
+      SERVICE_HOST: dispatch-service
+      LOG_LEVEL: info
+    ports:
+      - "9003:9003"
+    depends_on:
+      postgres-dispatch:
+        condition: service_healthy
+      nats:
+        condition: service_healthy
+    networks: [fleetops_net]
+    logging: *default-logging
+
+  tracking-service:
+    build:
+      context: .
+      dockerfile: services/tracking-service/Dockerfile
+    <<: *restart
+    environment:
+      <<: *otel-env
+      DATABASE_URL: postgres://fleetops:fleetops_secret@timescaledb:5432/tracking_db?sslmode=disable
+      NATS_URL: nats://nats:4222
+      GRPC_PORT: "9004"
+      CONSUL_HTTP_ADDR: consul:8500
+      SERVICE_HOST: tracking-service
+      LOG_LEVEL: info
+    ports:
+      - "9004:9004"
+    depends_on:
+      timescaledb:
+        condition: service_healthy
+      nats:
+        condition: service_healthy
+    networks: [fleetops_net]
+    logging: *default-logging
+
+  billing-service:
+    build:
+      context: .
+      dockerfile: services/billing-service/Dockerfile
+    <<: *restart
+    environment:
+      <<: *otel-env
+      DATABASE_URL: postgres://fleetops:fleetops_secret@postgres-billing:5432/billing_db?sslmode=disable
+      NATS_URL: nats://nats:4222
+      GRPC_PORT: "9005"
+      CONSUL_HTTP_ADDR: consul:8500
+      SERVICE_HOST: billing-service
+      LOG_LEVEL: info
+    ports:
+      - "9005:9005"
+    depends_on:
+      postgres-billing:
+        condition: service_healthy
+      nats:
+        condition: service_healthy
+    networks: [fleetops_net]
+    logging: *default-logging
+
+  notification-service:
+    build:
+      context: .
+      dockerfile: services/notification-service/Dockerfile
+    <<: *restart
+    environment:
+      <<: *otel-env
+      NATS_URL: nats://nats:4222
+      REDIS_ADDR: redis-notify:6379
+      GRPC_PORT: "9006"
+      CONSUL_HTTP_ADDR: consul:8500
+      SERVICE_HOST: notification-service
+      LOG_LEVEL: info
+    ports:
+      - "9006:9006"
+    depends_on:
+      nats:
+        condition: service_healthy
+      redis-notify:
+        condition: service_healthy
+    networks: [fleetops_net]
+    logging: *default-logging
+
+  document-worker:
+    build:
+      context: .
+      dockerfile: services/document-worker/Dockerfile
+    <<: *restart
+    environment:
+      <<: *otel-env
+      # Reads from driver DB (read replica in prod; same DB in dev)
+      DATABASE_URL: postgres://fleetops:fleetops_secret@postgres-driver:5432/driver_db?sslmode=disable
+      NATS_URL: nats://nats:4222
+      LOG_LEVEL: info
+    depends_on:
+      postgres-driver:
+        condition: service_healthy
+      nats:
+        condition: service_healthy
+    networks: [fleetops_net]
+    logging: *default-logging
+
+  api-gateway:
+    build:
+      context: .
+      dockerfile: services/api-gateway/Dockerfile
+    <<: *restart
+    environment:
+      <<: *otel-env
+      HTTP_PORT: "8080"
+      REDIS_ADDR: redis-shared:6379
+      IAM_SERVICE_ADDR: iam-service:9001
+      DRIVER_SERVICE_ADDR: driver-service:9002
+      DISPATCH_SERVICE_ADDR: dispatch-service:9003
+      TRACKING_SERVICE_ADDR: tracking-service:9004
+      BILLING_SERVICE_ADDR: billing-service:9005
+      NOTIFICATION_SERVICE_ADDR: notification-service:9006
+      CONSUL_HTTP_ADDR: consul:8500
+      LOG_LEVEL: info
+    ports:
+      - "8080:8080"
+    depends_on:
+      iam-service:
+        condition: service_started
+      driver-service:
+        condition: service_started
+      dispatch-service:
+        condition: service_started
+      redis-shared:
+        condition: service_healthy
+    networks: [fleetops_net]
+    logging: *default-logging
+
+  # ───────────────────────────────────────────────────────────────────────────
+  # Observability
+  # ───────────────────────────────────────────────────────────────────────────
+
+  otel-collector:
+    image: otel/opentelemetry-collector-contrib:latest
+    <<: *restart
+    command: ["--config=/etc/otel/config.yaml"]
+    volumes:
+      - ./deployments/otel/config.yaml:/etc/otel/config.yaml:ro
+    ports:
+      - "4317:4317"   # OTLP gRPC
+      - "4318:4318"   # OTLP HTTP
+      - "8888:8888"   # collector metrics
+    networks: [fleetops_net]
+    logging: *default-logging
+
+  jaeger:
+    image: jaegertracing/all-in-one:latest
+    <<: *restart
+    environment:
+      COLLECTOR_OTLP_ENABLED: "true"
+    ports:
+      - "16686:16686"  # UI
+      - "14250:14250"  # gRPC intake
+    networks: [fleetops_net]
+    logging: *default-logging
+
+  prometheus:
+    image: prom/prometheus:latest
+    <<: *restart
+    command:
+      - --config.file=/etc/prometheus/prometheus.yml
+      - --storage.tsdb.path=/prometheus
+      - --web.enable-lifecycle
+    volumes:
+      - ./deployments/prometheus/prometheus.yml:/etc/prometheus/prometheus.yml:ro
+      - prometheus_data:/prometheus
+    ports:
+      - "9090:9090"
+    networks: [fleetops_net]
+    logging: *default-logging
+
+  grafana:
+    image: grafana/grafana:latest
+    <<: *restart
+    environment:
+      GF_AUTH_ANONYMOUS_ENABLED: "true"
+      GF_AUTH_ANONYMOUS_ORG_ROLE: Admin
+      GF_FEATURE_TOGGLES_ENABLE: traceqlEditor
+    volumes:
+      - grafana_data:/var/lib/grafana
+      - ./deployments/grafana/datasources:/etc/grafana/provisioning/datasources:ro
+      - ./deployments/grafana/dashboards:/etc/grafana/provisioning/dashboards:ro
+    ports:
+      - "3000:3000"
+    depends_on:
+      - prometheus
+      - jaeger
+      - loki
+    networks: [fleetops_net]
+    logging: *default-logging
+
+  loki:
+    image: grafana/loki:latest
+    <<: *restart
+    command: -config.file=/etc/loki/loki.yaml
+    volumes:
+      - ./deployments/loki/loki.yaml:/etc/loki/loki.yaml:ro
+      - loki_data:/loki
+    ports:
+      - "3100:3100"
+    networks: [fleetops_net]
+    logging: *default-logging
+
+  promtail:
+    image: grafana/promtail:latest
+    <<: *restart
+    command: -config.file=/etc/promtail/promtail.yaml
+    volumes:
+      - /var/lib/docker/containers:/var/lib/docker/containers:ro
+      - /var/run/docker.sock:/var/run/docker.sock
+      - ./deployments/promtail/promtail.yaml:/etc/promtail/promtail.yaml:ro
+    depends_on:
+      - loki
+    networks: [fleetops_net]
+    logging: *default-logging
+
+  # ───────────────────────────────────────────────────────────────────────────
+  # Dev tooling
+  # ───────────────────────────────────────────────────────────────────────────
+
+  pgadmin:
+    image: dpage/pgadmin4:latest
+    profiles: [devtools]
+    environment:
+      PGADMIN_DEFAULT_EMAIL: admin@fleetops.dev
+      PGADMIN_DEFAULT_PASSWORD: admin
+    ports:
+      - "5050:80"
+    networks: [fleetops_net]
+
+# ───────────────────────────────────────────────────────────────────────────
+# Secrets (dev: plain files; prod: Docker Swarm secrets / Vault)
+# ───────────────────────────────────────────────────────────────────────────
+secrets:
+  jwt_private_key:
+    file: ./secrets/jwt_private.pem
+  jwt_public_key:
+    file: ./secrets/jwt_public.pem

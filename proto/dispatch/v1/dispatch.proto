@@ -1,0 +1,145 @@
+syntax = "proto3";
+
+package dispatch.v1;
+
+option go_package = "github.com/fleetops/gen/dispatch/v1;dispatchv1";
+
+// ── Enums ─────────────────────────────────────────────────────────────────────
+enum OrderStatus {
+  ORDER_STATUS_UNSPECIFIED = 0;
+  ORDER_STATUS_PENDING     = 1;
+  ORDER_STATUS_ASSIGNED    = 2;
+  ORDER_STATUS_PICKED_UP   = 3;
+  ORDER_STATUS_IN_TRANSIT  = 4;
+  ORDER_STATUS_DELIVERED   = 5;
+  ORDER_STATUS_FAILED      = 6;
+  ORDER_STATUS_TIMED_OUT   = 7;
+  ORDER_STATUS_CANCELLED   = 8;
+}
+
+enum OrderPriority {
+  ORDER_PRIORITY_UNSPECIFIED = 0;
+  ORDER_PRIORITY_STANDARD    = 1;
+  ORDER_PRIORITY_EXPRESS     = 2;
+  ORDER_PRIORITY_SAME_DAY    = 3;
+}
+
+// ── Domain Objects ────────────────────────────────────────────────────────────
+message Address {
+  string line1    = 1;
+  string line2    = 2;
+  string city     = 3;
+  string postcode = 4;
+  string country  = 5;
+  double lat      = 6;
+  double lon      = 7;
+}
+
+message TimeWindow {
+  string earliest = 1; // RFC3339
+  string latest   = 2; // RFC3339
+}
+
+message Waypoint {
+  string      id           = 1;
+  int32       sequence     = 2;
+  Address     address      = 3;
+  string      contact_name = 4;
+  string      contact_phone = 5;
+  TimeWindow  window       = 6;
+  string      arrived_at   = 7;
+  string      completed_at = 8;
+}
+
+message DispatchAssignment {
+  string id          = 1;
+  string order_id    = 2;
+  string driver_id   = 3;
+  string assigned_at = 4;
+  string eta         = 5; // RFC3339
+  bool   active      = 6;
+}
+
+message Order {
+  string                 id           = 1;
+  string                 tenant_id    = 2;
+  string                 reference    = 3; // human-readable ref
+  OrderStatus            status       = 4;
+  OrderPriority          priority     = 5;
+  repeated Waypoint      waypoints    = 6;
+  DispatchAssignment     assignment   = 7;
+  double                 distance_km  = 8;
+  string                 notes        = 9;
+  string                 created_at   = 10;
+  string                 updated_at   = 11;
+}
+
+message NearbyDriver {
+  string driver_id    = 1;
+  string driver_name  = 2;
+  double distance_km  = 3;
+  double lat          = 4;
+  double lon          = 5;
+}
+
+// ── Requests / Responses ──────────────────────────────────────────────────────
+message CreateOrderRequest {
+  string            tenant_id  = 1;
+  OrderPriority     priority   = 2;
+  repeated Waypoint waypoints  = 3;
+  string            notes      = 4;
+}
+
+message GetOrderRequest {
+  string order_id = 1;
+}
+
+message AssignDriverRequest {
+  string order_id  = 1;
+  string driver_id = 2;
+}
+
+message UnassignDriverRequest {
+  string order_id = 1;
+  string reason   = 2;
+}
+
+message UpdateOrderStatusRequest {
+  string      order_id = 1;
+  OrderStatus status   = 2;
+}
+
+message ListOrdersRequest {
+  string      tenant_id  = 1;
+  OrderStatus status     = 2;
+  int32       page_size  = 3;
+  string      page_token = 4;
+}
+
+message ListOrdersResponse {
+  repeated Order orders          = 1;
+  string         next_page_token = 2;
+}
+
+message FindNearbyDriversRequest {
+  string tenant_id  = 1;
+  double lat        = 2;
+  double lon        = 3;
+  double radius_km  = 4;
+  int32  limit      = 5;
+}
+
+message FindNearbyDriversResponse {
+  repeated NearbyDriver drivers = 1;
+}
+
+// ── Service ───────────────────────────────────────────────────────────────────
+service DispatchService {
+  rpc CreateOrder         (CreateOrderRequest)         returns (Order);
+  rpc GetOrder            (GetOrderRequest)            returns (Order);
+  rpc AssignDriver        (AssignDriverRequest)        returns (DispatchAssignment);
+  rpc UnassignDriver      (UnassignDriverRequest)      returns (DispatchAssignment);
+  rpc UpdateOrderStatus   (UpdateOrderStatusRequest)   returns (Order);
+  rpc ListOrders          (ListOrdersRequest)          returns (ListOrdersResponse);
+  rpc FindNearbyDrivers   (FindNearbyDriversRequest)   returns (FindNearbyDriversResponse);
+}

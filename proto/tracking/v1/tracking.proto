@@ -1,0 +1,116 @@
+syntax = "proto3";
+
+package tracking.v1;
+
+option go_package = "github.com/fleetops/gen/tracking/v1;trackingv1";
+
+// ── Enums ─────────────────────────────────────────────────────────────────────
+enum GeofenceType {
+  GEOFENCE_TYPE_UNSPECIFIED   = 0;
+  GEOFENCE_TYPE_DEPOT         = 1;
+  GEOFENCE_TYPE_RESTRICTED    = 2;
+  GEOFENCE_TYPE_CUSTOMER_SITE = 3;
+}
+
+enum GeofenceEvent {
+  GEOFENCE_EVENT_UNSPECIFIED = 0;
+  GEOFENCE_EVENT_ENTER       = 1;
+  GEOFENCE_EVENT_EXIT        = 2;
+}
+
+// ── Domain Objects ────────────────────────────────────────────────────────────
+message GeoPoint {
+  double lat = 1;
+  double lon = 2;
+}
+
+message LocationEvent {
+  string   driver_id  = 1;
+  string   session_id = 2;
+  GeoPoint position   = 3;
+  double   speed_kmh  = 4;
+  double   heading    = 5; // degrees 0-360
+  string   timestamp  = 6; // RFC3339
+}
+
+message GeofencePolygon {
+  repeated GeoPoint points = 1; // closed ring, first == last
+}
+
+message Geofence {
+  string          id        = 1;
+  string          tenant_id = 2;
+  string          name      = 3;
+  GeofenceType    type      = 4;
+  GeofencePolygon polygon   = 5;
+  bool            active    = 6;
+}
+
+message RoutePoint {
+  GeoPoint position  = 1;
+  string   timestamp = 2;
+  double   speed_kmh = 3;
+}
+
+// ── Requests / Responses ──────────────────────────────────────────────────────
+message IngestLocationRequest {
+  string   driver_id  = 1;
+  string   session_id = 2;
+  GeoPoint position   = 3;
+  double   speed_kmh  = 4;
+  double   heading    = 5;
+  string   timestamp  = 6;
+}
+
+message IngestLocationResponse {
+  bool   accepted       = 1;
+  string geofence_alert = 2; // non-empty if a geofence was crossed
+}
+
+message StreamDriverLocationRequest {
+  string driver_id  = 1;
+  string tenant_id  = 2;
+}
+
+message GetLastKnownLocationRequest {
+  string driver_id = 1;
+}
+
+message GetRouteHistoryRequest {
+  string driver_id  = 1;
+  string session_id = 2;
+  string from       = 3; // RFC3339
+  string to         = 4; // RFC3339
+}
+
+message GetRouteHistoryResponse {
+  repeated RoutePoint points     = 1;
+  double              total_km   = 2;
+  double              avg_speed  = 3;
+}
+
+message UpsertGeofenceRequest {
+  string          tenant_id = 1;
+  string          name      = 2;
+  GeofenceType    type      = 3;
+  GeofencePolygon polygon   = 4;
+}
+
+message CheckGeofenceRequest {
+  string   tenant_id = 1;
+  GeoPoint position  = 2;
+}
+
+message CheckGeofenceResponse {
+  repeated Geofence matched_zones = 1;
+}
+
+// ── Service ───────────────────────────────────────────────────────────────────
+service TrackingService {
+  rpc IngestLocation          (IngestLocationRequest)          returns (IngestLocationResponse);
+  rpc StreamDriverLocation    (StreamDriverLocationRequest)    returns (stream LocationEvent);
+  rpc GetLastKnownLocation    (GetLastKnownLocationRequest)    returns (LocationEvent);
+  rpc GetRouteHistory         (GetRouteHistoryRequest)         returns (GetRouteHistoryResponse);
+  rpc UpsertGeofence          (UpsertGeofenceRequest)          returns (Geofence);
+  rpc CheckGeofence           (CheckGeofenceRequest)           returns (CheckGeofenceResponse);
+}

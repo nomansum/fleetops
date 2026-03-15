@@ -1,0 +1,151 @@
+{
+  "title": "FleetOps — Platform Overview",
+  "uid": "fleetops-overview",
+  "version": 1,
+  "schemaVersion": 38,
+  "refresh": "30s",
+  "time": { "from": "now-1h", "to": "now" },
+  "panels": [
+    {
+      "id": 1,
+      "title": "gRPC Request Rate (all services)",
+      "type": "timeseries",
+      "gridPos": { "x": 0, "y": 0, "w": 12, "h": 8 },
+      "datasource": { "uid": "prometheus" },
+      "targets": [
+        {
+          "expr": "sum by (service) (rate(grpc_server_handled_total[1m]))",
+          "legendFormat": "{{service}}"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": { "unit": "reqps" }
+      }
+    },
+    {
+      "id": 2,
+      "title": "gRPC Error Rate",
+      "type": "timeseries",
+      "gridPos": { "x": 12, "y": 0, "w": 12, "h": 8 },
+      "datasource": { "uid": "prometheus" },
+      "targets": [
+        {
+          "expr": "sum by (service, grpc_code) (rate(grpc_server_handled_total{grpc_code!=\"OK\"}[1m]))",
+          "legendFormat": "{{service}}/{{grpc_code}}"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": { "unit": "reqps" }
+      }
+    },
+    {
+      "id": 3,
+      "title": "gRPC P99 Latency (ms)",
+      "type": "timeseries",
+      "gridPos": { "x": 0, "y": 8, "w": 12, "h": 8 },
+      "datasource": { "uid": "prometheus" },
+      "targets": [
+        {
+          "expr": "histogram_quantile(0.99, sum by (service, le) (rate(grpc_server_handling_seconds_bucket[1m]))) * 1000",
+          "legendFormat": "p99 {{service}}"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": { "unit": "ms" }
+      }
+    },
+    {
+      "id": 4,
+      "title": "NATS JetStream Messages / sec",
+      "type": "timeseries",
+      "gridPos": { "x": 12, "y": 8, "w": 12, "h": 8 },
+      "datasource": { "uid": "prometheus" },
+      "targets": [
+        {
+          "expr": "rate(nats_core_sent_msgs_total[1m])",
+          "legendFormat": "published"
+        },
+        {
+          "expr": "rate(nats_core_recv_msgs_total[1m])",
+          "legendFormat": "consumed"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": { "unit": "msgps" }
+      }
+    },
+    {
+      "id": 5,
+      "title": "Active Orders",
+      "type": "stat",
+      "gridPos": { "x": 0, "y": 16, "w": 6, "h": 4 },
+      "datasource": { "uid": "prometheus" },
+      "targets": [
+        {
+          "expr": "fleetops_active_orders",
+          "legendFormat": "Active Orders"
+        }
+      ]
+    },
+    {
+      "id": 6,
+      "title": "Available Drivers",
+      "type": "stat",
+      "gridPos": { "x": 6, "y": 16, "w": 6, "h": 4 },
+      "datasource": { "uid": "prometheus" },
+      "targets": [
+        {
+          "expr": "fleetops_available_drivers",
+          "legendFormat": "Available Drivers"
+        }
+      ]
+    },
+    {
+      "id": 7,
+      "title": "Location Pings / sec",
+      "type": "stat",
+      "gridPos": { "x": 12, "y": 16, "w": 6, "h": 4 },
+      "datasource": { "uid": "prometheus" },
+      "targets": [
+        {
+          "expr": "rate(fleetops_location_pings_total[1m])",
+          "legendFormat": "Pings/s"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": { "unit": "short" }
+      }
+    },
+    {
+      "id": 8,
+      "title": "Invoices Issued Today",
+      "type": "stat",
+      "gridPos": { "x": 18, "y": 16, "w": 6, "h": 4 },
+      "datasource": { "uid": "prometheus" },
+      "targets": [
+        {
+          "expr": "increase(fleetops_invoices_issued_total[24h])",
+          "legendFormat": "Invoices"
+        }
+      ]
+    },
+    {
+      "id": 9,
+      "title": "Service Logs (errors)",
+      "type": "logs",
+      "gridPos": { "x": 0, "y": 20, "w": 24, "h": 10 },
+      "datasource": { "uid": "loki" },
+      "targets": [
+        {
+          "expr": "{service=~\".+\"} |= \"error\" | json",
+          "legendFormat": ""
+        }
+      ],
+      "options": {
+        "showLabels": true,
+        "showTime": true,
+        "sortOrder": "Descending"
+      }
+    }
+  ]
+}

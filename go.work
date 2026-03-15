@@ -1,0 +1,14 @@
+go 1.25.7
+
+use (
+	./gen/go
+	./pkg
+	./services/api-gateway
+	./services/billing-service
+	./services/dispatch-service
+	./services/document-worker
+	./services/driver-service
+	./services/iam-service
+	./services/notification-service
+	./services/tracking-service
+)

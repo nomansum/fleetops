@@ -1,0 +1,91 @@
+syntax = "proto3";
+
+package notification.v1;
+
+option go_package = "github.com/fleetops/gen/notification/v1;notificationv1";
+
+// ── Enums ─────────────────────────────────────────────────────────────────────
+enum Channel {
+  CHANNEL_UNSPECIFIED = 0;
+  CHANNEL_EMAIL       = 1;
+  CHANNEL_SMS         = 2;
+  CHANNEL_PUSH        = 3;
+}
+
+enum NotificationStatus {
+  NOTIFICATION_STATUS_UNSPECIFIED = 0;
+  NOTIFICATION_STATUS_PENDING     = 1;
+  NOTIFICATION_STATUS_SENT        = 2;
+  NOTIFICATION_STATUS_FAILED      = 3;
+  NOTIFICATION_STATUS_DELIVERED   = 4;
+}
+
+// ── Domain Objects ────────────────────────────────────────────────────────────
+message NotificationTemplate {
+  string  id          = 1;
+  string  name        = 2;
+  Channel channel     = 3;
+  string  subject     = 4; // email subject / SMS header
+  string  body        = 5; // Go template string with {{.VarName}} placeholders
+  bool    active      = 6;
+}
+
+message Notification {
+  string             id           = 1;
+  string             tenant_id    = 2;
+  string             recipient_id = 3;
+  Channel            channel      = 4;
+  string             template_id  = 5;
+  string             subject      = 6;
+  string             body         = 7;
+  NotificationStatus status       = 8;
+  int32              attempts     = 9;
+  string             sent_at      = 10;
+  string             created_at   = 11;
+}
+
+// ── Requests / Responses ──────────────────────────────────────────────────────
+message SendNotificationRequest {
+  string            tenant_id    = 1;
+  string            recipient_id = 2;
+  Channel           channel      = 3;
+  string            template_id  = 4;
+  map<string,string> vars        = 5; // template variable substitutions
+}
+
+message SendNotificationResponse {
+  string             notification_id = 1;
+  NotificationStatus status          = 2;
+}
+
+message GetNotificationStatusRequest {
+  string notification_id = 1;
+}
+
+message ListTemplatesRequest {
+  string  tenant_id = 1;
+  Channel channel   = 2;
+  int32   page_size = 3;
+  string  page_token = 4;
+}
+
+message ListTemplatesResponse {
+  repeated NotificationTemplate templates       = 1;
+  string                        next_page_token = 2;
+}
+
+message UpsertTemplateRequest {
+  string  tenant_id = 1;
+  string  name      = 2;
+  Channel channel   = 3;
+  string  subject   = 4;
+  string  body      = 5;
+}
+
+// ── Service ───────────────────────────────────────────────────────────────────
+service NotificationService {
+  rpc SendNotification       (SendNotificationRequest)       returns (SendNotificationResponse);
+  rpc GetNotificationStatus  (GetNotificationStatusRequest)  returns (Notification);
+  rpc ListTemplates          (ListTemplatesRequest)          returns (ListTemplatesResponse);
+  rpc UpsertTemplate         (UpsertTemplateRequest)         returns (NotificationTemplate);
+}
