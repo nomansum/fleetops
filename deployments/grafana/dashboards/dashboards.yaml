@@ -1,0 +1,13 @@
+apiVersion: 1
+
+providers:
+  - name: FleetOps
+    orgId: 1
+    folder: FleetOps
+    type: file
+    disableDeletion: false
+    updateIntervalSeconds: 30
+    allowUiUpdates: true
+    options:
+      path: /etc/grafana/provisioning/dashboards
+      foldersFromFilesStructure: false

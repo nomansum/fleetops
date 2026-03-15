@@ -1,0 +1,41 @@
+global:
+  scrape_interval: 15s
+  evaluation_interval: 15s
+  external_labels:
+    cluster: fleetops-dev
+
+scrape_configs:
+  # OTel Collector self-metrics
+  - job_name: otel-collector
+    static_configs:
+      - targets: ["otel-collector:8888"]
+        labels:
+          service: otel-collector
+
+  # OTel Collector forwarded app metrics
+  - job_name: fleetops-apps
+    static_configs:
+      - targets: ["otel-collector:8889"]
+        labels:
+          cluster: fleetops
+
+  # NATS JetStream monitoring
+  - job_name: nats
+    static_configs:
+      - targets: ["nats:8222"]
+    metrics_path: /metrics
+
+  # Consul agent metrics
+  - job_name: consul
+    metrics_path: /v1/agent/metrics
+    params:
+      format: ["prometheus"]
+    static_configs:
+      - targets: ["consul:8500"]
+
+  # Postgres exporters (via pgexporter sidecar in prod; direct query_exporter in dev)
+  # In dev, each service's own /metrics endpoint is scraped via OTel above.
+  # Uncomment if you add postgres_exporter containers:
+  # - job_name: postgres-iam
+  #   static_configs:
+  #     - targets: ["postgres-iam:9187"]
